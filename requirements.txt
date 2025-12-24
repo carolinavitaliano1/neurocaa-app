@@ -1,4 +1,3 @@
 streamlit
 requests
 openai
-reportlab==3.6.12
