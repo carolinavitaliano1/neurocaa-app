@@ -72,15 +72,15 @@ def buscar_imagem_arasaac(palavra):
 
 def gerar_pdf(paciente, palavras):
     nome_arquivo = f"prancha_{paciente.replace(' ', '_')}.pdf"
-    doc = SimpleDocTemplate(nome_arquivo, pagesize=A4)
-    estilos = getSampleStyleSheet()
-    elementos = []
+    c = canvas.Canvas(nome_arquivo, pagesize=A4)
+    width, height = A4
 
-    elementos.append(Paragraph(f"<b>Paciente:</b> {paciente}", estilos["Normal"]))
-    elementos.append(Paragraph("<br/>", estilos["Normal"]))
+    y = height - 50
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, y, f"Paciente: {paciente}")
+    y -= 80
 
-    tabela = []
-    linha = []
+    x = 50
 
     for palavra in palavras:
         img_url = buscar_imagem_arasaac(palavra)
@@ -88,21 +88,13 @@ def gerar_pdf(paciente, palavras):
             img_data = requests.get(img_url).content
             with open("temp.png", "wb") as f:
                 f.write(img_data)
-            linha.append(Image("temp.png", width=80, height=80))
-        else:
-            linha.append(Paragraph(palavra, estilos["Normal"]))
+            c.drawImage("temp.png", x, y, width=80, height=80)
+            c.drawCentredString(x + 40, y - 15, palavra)
+            x += 100
 
-    tabela.append(linha)
-
-    t = Table(tabela)
-    t.setStyle(TableStyle([
-        ("ALIGN", (0,0), (-1,-1), "CENTER"),
-        ("GRID", (0,0), (-1,-1), 1, colors.black)
-    ]))
-
-    elementos.append(t)
-    doc.build(elementos)
+    c.save()
     return nome_arquivo
+
 
 # ===============================
 # GERAR PRANCHA
