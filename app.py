@@ -3,8 +3,9 @@ import requests
 import os
 import time
 from openai import OpenAI, RateLimitError
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
