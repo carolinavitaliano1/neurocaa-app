@@ -3,9 +3,6 @@ import requests
 import os
 import time
 from openai import OpenAI, RateLimitError
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-
 
 # ===============================
 # CONFIGURAÇÃO INICIAL
@@ -56,7 +53,7 @@ def gerar_palavras_caa(texto):
         return [p.strip().lower() for p in resposta.choices[0].message.content.split(",")]
 
     except RateLimitError:
-        st.warning("⏳ Limite temporário. Aguarde alguns segundos.")
+        st.warning("⏳ Aguarde alguns segundos e tente novamente.")
         time.sleep(3)
         return []
 
@@ -68,31 +65,49 @@ def buscar_imagem_arasaac(palavra):
         return f"https://api.arasaac.org/api/pictograms/{pid}"
     return None
 
-def gerar_pdf(paciente, palavras):
-    nome_arquivo = f"prancha_{paciente.replace(' ', '_')}.pdf"
-    c = canvas.Canvas(nome_arquivo, pagesize=A4)
-    width, height = A4
-
-    y = height - 50
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y, f"Paciente: {paciente}")
-    y -= 80
-
-    x = 50
+def gerar_html_prancha(paciente, palavras):
+    html = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Prancha CAA</title>
+        <style>
+            body {{ font-family: Arial; }}
+            h2 {{ text-align: center; }}
+            .grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+                gap: 20px;
+                margin-top: 30px;
+            }}
+            .card {{
+                border: 1px solid #000;
+                text-align: center;
+                padding: 10px;
+            }}
+            img {{
+                width: 100px;
+                height: 100px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h2>Paciente: {paciente}</h2>
+        <div class="grid">
+    """
 
     for palavra in palavras:
-        img_url = buscar_imagem_arasaac(palavra)
-        if img_url:
-            img_data = requests.get(img_url).content
-            with open("temp.png", "wb") as f:
-                f.write(img_data)
-            c.drawImage("temp.png", x, y, width=80, height=80)
-            c.drawCentredString(x + 40, y - 15, palavra)
-            x += 100
+        img = buscar_imagem_arasaac(palavra)
+        if img:
+            html += f"""
+            <div class="card">
+                <img src="{img}">
+                <p><b>{palavra}</b></p>
+            </div>
+            """
 
-    c.save()
-    return nome_arquivo
-
+    html += "</div></body></html>"
+    return html
 
 # ===============================
 # GERAR PRANCHA
@@ -117,7 +132,7 @@ if gerar and texto and paciente:
                 st.markdown(f"**{palavra}**")
 
 # ===============================
-# PRANCHAS SALVAS
+# PRANCHAS SALVAS + IMPRIMIR
 # ===============================
 
 if st.session_state.pranchas:
@@ -126,20 +141,12 @@ if st.session_state.pranchas:
     for i, p in enumerate(st.session_state.pranchas):
         st.markdown(f"**Paciente:** {p['paciente']}")
 
-        cols = st.columns(len(p["palavras"]))
-        for col, palavra in zip(cols, p["palavras"]):
-            with col:
-                img = buscar_imagem_arasaac(palavra)
-                if img:
-                    st.image(img, width=80)
-                st.caption(palavra)
+        html = gerar_html_prancha(p["paciente"], p["palavras"])
 
-        if st.button(f"📄 Gerar PDF – {p['paciente']}", key=i):
-            pdf = gerar_pdf(p["paciente"], p["palavras"])
-            with open(pdf, "rb") as f:
-                st.download_button(
-                    label="⬇️ Baixar PDF",
-                    data=f,
-                    file_name=pdf,
-                    mime="application/pdf"
-                )
+        st.download_button(
+            label="🖨️ Baixar prancha para imprimir (PDF)",
+            data=html,
+            file_name=f"prancha_{p['paciente'].replace(' ','_')}.html",
+            mime="text/html",
+            key=f"html_{i}"
+        )
