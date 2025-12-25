@@ -37,9 +37,10 @@ gerar = st.button("🧩 Gerar prancha")
 
 def gerar_palavras_caa(texto):
     prompt = f"""
-    Transforme a frase abaixo em palavras funcionais para uma prancha de Comunicação Alternativa.
-    Use palavras simples, concretas e funcionais.
-    Retorne apenas uma lista separada por vírgulas.
+    Transforme a frase abaixo em palavras funcionais para Comunicação Alternativa.
+    Use apenas palavras simples, concretas e isoladas (ex: comer, beber, água, banana).
+    Não use frases.
+    Retorne SOMENTE uma lista separada por vírgulas.
 
     Frase: {texto}
     """
@@ -48,7 +49,7 @@ def gerar_palavras_caa(texto):
         resposta = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=100
+            max_tokens=80
         )
         return [p.strip().lower() for p in resposta.choices[0].message.content.split(",")]
 
@@ -57,13 +58,31 @@ def gerar_palavras_caa(texto):
         time.sleep(3)
         return []
 
+
+def limpar_palavras(palavras):
+    stopwords = ["quero", "eu", "de", "da", "do", "para", "com", "um", "uma"]
+    palavras_limpas = []
+
+    for p in palavras:
+        if p and p not in stopwords and len(p) <= 15:
+            palavras_limpas.append(p)
+
+    return list(dict.fromkeys(palavras_limpas))  # remove duplicadas
+
+
 def buscar_imagem_arasaac(palavra):
-    url = f"https://api.arasaac.org/api/pictograms/pt/{palavra}"
-    r = requests.get(url)
-    if r.status_code == 200 and r.json():
-        pid = r.json()[0]["_id"]
-        return f"https://api.arasaac.org/api/pictograms/{pid}"
+    headers = {"User-Agent": "NeuroCAA-App"}
+
+    for idioma in ["pt", "en"]:
+        url = f"https://api.arasaac.org/api/pictograms/{idioma}/search/{palavra}"
+        r = requests.get(url, headers=headers, timeout=5)
+
+        if r.status_code == 200 and r.json():
+            pid = r.json()[0]["_id"]
+            return f"https://api.arasaac.org/api/pictograms/{pid}"
+
     return None
+
 
 def gerar_html_prancha(paciente, palavras):
     html = f"""
@@ -81,7 +100,7 @@ def gerar_html_prancha(paciente, palavras):
                 margin-top: 30px;
             }}
             .card {{
-                border: 1px solid #000;
+                border: 2px solid #000;
                 text-align: center;
                 padding: 10px;
             }}
@@ -114,7 +133,8 @@ def gerar_html_prancha(paciente, palavras):
 # ===============================
 
 if gerar and texto and paciente:
-    palavras = gerar_palavras_caa(texto)
+    palavras_brutas = gerar_palavras_caa(texto)
+    palavras = limpar_palavras(palavras_brutas)
 
     if palavras:
         st.session_state.pranchas.append({
@@ -123,6 +143,7 @@ if gerar and texto and paciente:
         })
 
         st.subheader("🧩 Prancha atual")
+
         cols = st.columns(len(palavras))
         for col, palavra in zip(cols, palavras):
             with col:
@@ -132,19 +153,27 @@ if gerar and texto and paciente:
                 st.markdown(f"**{palavra}**")
 
 # ===============================
-# PRANCHAS SALVAS + IMPRIMIR
+# PRANCHAS SALVAS
 # ===============================
 
 if st.session_state.pranchas:
     st.subheader("📂 Pranchas salvas")
 
     for i, p in enumerate(st.session_state.pranchas):
-        st.markdown(f"**Paciente:** {p['paciente']}")
+        st.markdown(f"### 👤 {p['paciente']}")
+
+        cols = st.columns(len(p["palavras"]))
+        for col, palavra in zip(cols, p["palavras"]):
+            with col:
+                img = buscar_imagem_arasaac(palavra)
+                if img:
+                    st.image(img, width=90)
+                st.caption(palavra)
 
         html = gerar_html_prancha(p["paciente"], p["palavras"])
 
         st.download_button(
-            label="🖨️ Baixar prancha para imprimir (PDF)",
+            label="🖨️ Baixar prancha (HTML)",
             data=html,
             file_name=f"prancha_{p['paciente'].replace(' ','_')}.html",
             mime="text/html",
