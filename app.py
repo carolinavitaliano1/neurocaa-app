@@ -26,6 +26,9 @@ st.markdown(
 if "pranchas" not in st.session_state:
     st.session_state.pranchas = []
 
+if "prancha_atual" not in st.session_state:
+    st.session_state.prancha_atual = None
+
 # ===============================
 # DADOS DO PACIENTE
 # ===============================
@@ -48,7 +51,8 @@ gerar = st.button("🧩 Gerar prancha")
 def gerar_palavras_caa(texto):
     prompt = f"""
     Transforme a frase abaixo em palavras funcionais para Comunicação Alternativa.
-    Use apenas palavras simples e isoladas.
+    Use apenas palavras simples, concretas e isoladas.
+    Não use frases.
     Retorne somente uma lista separada por vírgulas.
 
     Frase: {texto}
@@ -70,7 +74,13 @@ def gerar_palavras_caa(texto):
 
 def limpar_palavras(palavras):
     stopwords = ["quero", "eu", "de", "da", "do", "para", "com", "um", "uma"]
-    return [p for p in palavras if p and p not in stopwords and len(p) <= 15]
+    palavras_limpas = []
+
+    for p in palavras:
+        if p and p not in stopwords and len(p) <= 15:
+            palavras_limpas.append(p)
+
+    return list(dict.fromkeys(palavras_limpas))
 
 
 def buscar_imagem_arasaac(palavra):
@@ -106,7 +116,7 @@ def gerar_pdf(paciente, palavras):
     tabela = []
     linha = []
 
-    for i, palavra in enumerate(palavras):
+    for palavra in palavras:
         img_path = buscar_imagem_arasaac(palavra)
         if img_path:
             celula = [
@@ -143,27 +153,47 @@ def gerar_pdf(paciente, palavras):
     return nome_arquivo
 
 # ===============================
-# GERAR PRANCHA
+# GERAR PRANCHA (NÃO SALVA AUTOMÁTICO)
 # ===============================
 
 if gerar and texto and paciente:
     palavras = limpar_palavras(gerar_palavras_caa(texto))
 
     if palavras:
-        st.session_state.pranchas.append({
+        st.session_state.prancha_atual = {
             "paciente": paciente,
             "palavras": palavras
-        })
+        }
 
-        st.subheader("🧩 Prancha gerada")
-        cols = st.columns(len(palavras))
+# ===============================
+# VISUALIZAÇÃO + SALVAR
+# ===============================
 
-        for col, palavra in zip(cols, palavras):
-            with col:
-                img = buscar_imagem_arasaac(palavra)
-                if img:
-                    st.image(img, width=100)
-                st.caption(palavra)
+if st.session_state.prancha_atual:
+    st.subheader("🧩 Prancha gerada (visualização)")
+
+    palavras = st.session_state.prancha_atual["palavras"]
+
+    cols = st.columns(len(palavras))
+    for col, palavra in zip(cols, palavras):
+        with col:
+            img = buscar_imagem_arasaac(palavra)
+            if img:
+                st.image(img, width=100)
+            st.caption(palavra)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("💾 Salvar prancha"):
+            st.session_state.pranchas.append(st.session_state.prancha_atual)
+            st.session_state.prancha_atual = None
+            st.success("✅ Prancha salva com sucesso!")
+
+    with col2:
+        if st.button("🗑️ Descartar prancha"):
+            st.session_state.prancha_atual = None
+            st.warning("Prancha descartada.")
 
 # ===============================
 # PRANCHAS SALVAS + PDF
@@ -173,7 +203,17 @@ if st.session_state.pranchas:
     st.subheader("📂 Pranchas salvas")
 
     for i, p in enumerate(st.session_state.pranchas):
-        if st.button(f"📄 Gerar PDF – {p['paciente']}", key=i):
+        st.markdown(f"### 👤 {p['paciente']}")
+
+        cols = st.columns(len(p["palavras"]))
+        for col, palavra in zip(cols, p["palavras"]):
+            with col:
+                img = buscar_imagem_arasaac(palavra)
+                if img:
+                    st.image(img, width=80)
+                st.caption(palavra)
+
+        if st.button(f"📄 Gerar PDF – {p['paciente']}", key=f"pdf_{i}"):
             pdf = gerar_pdf(p["paciente"], p["palavras"])
             with open(pdf, "rb") as f:
                 st.download_button(
