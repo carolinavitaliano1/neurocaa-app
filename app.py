@@ -1,125 +1,162 @@
 import streamlit as st
-from services.ia import gerar_palavras_caa, limpar_palavras
-from services.arasaac import buscar_imagem_arasaac
-from services.pdf import gerar_pdf
 import json
 import os
+from services.pdf import gerar_pdf
 
-st.set_page_config(page_title="NeuroCAA", layout="wide")
-
-st.title("🧠 NeuroCAA – Comunicação Alternativa")
-st.markdown(
-    "<small>🖼️ Pictogramas: ARASAAC – Licença CC BY-NC-SA 4.0</small>",
-    unsafe_allow_html=True
+# =========================
+# CONFIGURAÇÃO INICIAL
+# =========================
+st.set_page_config(
+    page_title="NeuroCAA – Comunicação Alternativa",
+    layout="wide"
 )
 
-# ===============================
-# BASE DE DADOS SIMPLES
-# ===============================
 DATA_PATH = "data/pacientes.json"
-os.makedirs("data", exist_ok=True)
 
-if not os.path.exists(DATA_PATH):
-    with open(DATA_PATH, "w") as f:
-        json.dump({}, f)
+# =========================
+# FUNÇÕES AUXILIARES
+# =========================
+def carregar_pacientes():
+    if not os.path.exists("data"):
+        os.makedirs("data")
 
-with open(DATA_PATH, "r") as f:
-    pacientes_db = json.load(f)
+    if not os.path.exists(DATA_PATH):
+        with open(DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump({}, f)
 
-# ===============================
-# MENU LATERAL
-# ===============================
+    with open(DATA_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def salvar_pacientes(dados):
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=2)
+
+
+# =========================
+# ESTADO INICIAL
+# =========================
+if "pacientes" not in st.session_state:
+    st.session_state.pacientes = carregar_pacientes()
+
+if "paciente_atual" not in st.session_state:
+    st.session_state.paciente_atual = None
+
+if "prancha_atual" not in st.session_state:
+    st.session_state.prancha_atual = []
+
+
+# =========================
+# MENU LATERAL (AGORA APARECE!)
+# =========================
+st.sidebar.title("🧠 NeuroCAA")
 menu = st.sidebar.radio(
-    "📂 Navegação",
-    ["👤 Pacientes", "🧩 Criar Prancha", "📂 Histórico"]
+    "Navegação",
+    ["👤 Pacientes", "🖼️ Criar Prancha", "📚 Histórico"]
 )
 
-# ===============================
-# 👤 PACIENTES
-# ===============================
+st.sidebar.markdown("---")
+st.sidebar.caption("Pictogramas: ARASAAC\nLicença CC BY-NC-SA 4.0")
+
+
+# =========================
+# TELA 1 – PACIENTES
+# =========================
 if menu == "👤 Pacientes":
-    st.header("👤 Cadastro de Pacientes")
+    st.title("👤 Cadastro e Seleção de Pacientes")
 
-    novo = st.text_input("Nome do paciente")
+    nome_novo = st.text_input("Nome do paciente")
+
     if st.button("➕ Cadastrar paciente"):
-        if novo and novo not in pacientes_db:
-            pacientes_db[novo] = []
-            with open(DATA_PATH, "w") as f:
-                json.dump(pacientes_db, f, indent=2, ensure_ascii=False)
-            st.success("Paciente cadastrado!")
+        if nome_novo.strip() == "":
+            st.warning("Digite um nome válido.")
+        elif nome_novo in st.session_state.pacientes:
+            st.warning("Paciente já cadastrado.")
         else:
-            st.warning("Paciente já existe ou nome vazio.")
-
-    st.subheader("📋 Pacientes cadastrados")
-    for p in pacientes_db:
-        st.write("•", p)
-
-# ===============================
-# 🧩 CRIAR PRANCHA
-# ===============================
-elif menu == "🧩 Criar Prancha":
-    st.header("🧩 Criar prancha de comunicação")
-
-    paciente = st.selectbox("Selecione o paciente", list(pacientes_db.keys()))
-    texto = st.text_input("Frase (ex: quero beber água)")
-
-    if st.button("🧠 Gerar prancha"):
-        palavras = limpar_palavras(gerar_palavras_caa(texto))
-
-        if palavras:
-            st.session_state.prancha_atual = {
-                "paciente": paciente,
-                "palavras": palavras
+            st.session_state.pacientes[nome_novo] = {
+                "pranchas": []
             }
+            salvar_pacientes(st.session_state.pacientes)
+            st.success("Paciente cadastrado com sucesso!")
 
-    if "prancha_atual" in st.session_state:
-        st.subheader("👀 Visualização")
+    st.markdown("---")
 
-        palavras = st.session_state.prancha_atual["palavras"]
-        cols = st.columns(min(len(palavras), 6))
+    if st.session_state.pacientes:
+        paciente = st.selectbox(
+            "Selecione um paciente",
+            list(st.session_state.pacientes.keys())
+        )
 
-        for col, palavra in zip(cols, palavras):
-            with col:
-                img = buscar_imagem_arasaac(palavra)
-                if img:
-                    st.image(img, width=100)
-                st.caption(palavra)
+        if st.button("✅ Usar este paciente"):
+            st.session_state.paciente_atual = paciente
+            st.session_state.prancha_atual = []
+            st.success(f"Paciente ativo: {paciente}")
 
-        if st.button("💾 Salvar prancha"):
-            pacientes_db[paciente].append(palavras)
-            with open(DATA_PATH, "w") as f:
-                json.dump(pacientes_db, f, indent=2, ensure_ascii=False)
-            del st.session_state.prancha_atual
-            st.success("Prancha salva no histórico do paciente!")
 
-# ===============================
-# 📂 HISTÓRICO
-# ===============================
-elif menu == "📂 Histórico":
-    st.header("📂 Histórico por paciente")
+# =========================
+# TELA 2 – CRIAÇÃO DE PRANCHA
+# =========================
+elif menu == "🖼️ Criar Prancha":
+    st.title("🖼️ Criar Prancha de Comunicação")
 
-    paciente = st.selectbox("Paciente", list(pacientes_db.keys()))
+    if not st.session_state.paciente_atual:
+        st.warning("Selecione um paciente primeiro.")
+        st.stop()
 
-    if pacientes_db[paciente]:
-        for i, prancha in enumerate(pacientes_db[paciente]):
-            st.markdown(f"### 🧩 Prancha {i+1}")
+    st.info(f"Paciente ativo: **{st.session_state.paciente_atual}**")
 
-            cols = st.columns(min(len(prancha), 6))
-            for col, palavra in zip(cols, prancha):
-                with col:
-                    img = buscar_imagem_arasaac(palavra)
-                    if img:
-                        st.image(img, width=80)
-                    st.caption(palavra)
+    palavra = st.text_input("Digite uma palavra ou frase (ex: QUERO ÁGUA)")
 
-            if st.button(f"📄 Gerar PDF {i+1}", key=f"{paciente}_{i}"):
-                pdf = gerar_pdf(paciente, prancha)
-                with open(pdf, "rb") as f:
-                    st.download_button(
-                        "⬇️ Baixar PDF",
-                        f,
-                        file_name=pdf,
-                        mime="application/pdf"
-                    )
+    if st.button("➕ Adicionar à prancha"):
+        if palavra.strip():
+            st.session_state.prancha_atual.append(palavra.upper())
+
+    if st.session_state.prancha_atual:
+        st.subheader("Prancha atual")
+        st.write(st.session_state.prancha_atual)
+
+    st.markdown("---")
+
+    # 🔒 BOTÃO PDF BLINDADO
+    if st.button("📄 Salvar prancha em PDF"):
+        if not st.session_state.prancha_atual:
+            st.warning("⚠️ A prancha está vazia. Adicione pelo menos um item.")
+        else:
+            pdf = gerar_pdf(
+                st.session_state.paciente_atual,
+                st.session_state.prancha_atual
+            )
+
+            # salva no histórico do paciente
+            st.session_state.pacientes[
+                st.session_state.paciente_atual
+            ]["pranchas"].append(st.session_state.prancha_atual)
+
+            salvar_pacientes(st.session_state.pacientes)
+
+            st.success("✅ PDF gerado e prancha salva no histórico!")
+
+
+# =========================
+# TELA 3 – HISTÓRICO
+# =========================
+elif menu == "📚 Histórico":
+    st.title("📚 Histórico de Pranchas")
+
+    if not st.session_state.paciente_atual:
+        st.warning("Selecione um paciente primeiro.")
+        st.stop()
+
+    paciente = st.session_state.paciente_atual
+    historico = st.session_state.pacientes[paciente]["pranchas"]
+
+    st.info(f"Paciente: **{paciente}**")
+
+    if not historico:
+        st.warning("Nenhuma prancha salva ainda.")
     else:
-        st.info("Este paciente ainda não possui pranchas.")
+        for i, prancha in enumerate(historico, start=1):
+            st.markdown(f"**Prancha {i}:**")
+            st.write(prancha)
+            st.markdown("---")
+
