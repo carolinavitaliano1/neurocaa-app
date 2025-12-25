@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 import time
+import uuid
 from openai import OpenAI, RateLimitError
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image
@@ -30,6 +31,19 @@ if "prancha_atual" not in st.session_state:
     st.session_state.prancha_atual = None
 
 # ===============================
+# FUNÇÕES DE SEGURANÇA
+# ===============================
+
+def safe_columns(itens):
+    try:
+        n = len(itens)
+    except:
+        n = 1
+    if n < 1:
+        n = 1
+    return st.columns(n)
+
+# ===============================
 # DADOS DO PACIENTE
 # ===============================
 
@@ -45,7 +59,7 @@ texto = st.text_input("Ex: quero beber água")
 gerar = st.button("🧩 Gerar prancha")
 
 # ===============================
-# FUNÇÕES
+# FUNÇÕES PRINCIPAIS
 # ===============================
 
 def gerar_palavras_caa(texto):
@@ -83,6 +97,7 @@ def limpar_palavras(palavras):
     return list(dict.fromkeys(palavras_limpas))
 
 
+@st.cache_data(show_spinner=False)
 def buscar_imagem_arasaac(palavra):
     headers = {"User-Agent": "NeuroCAA-App"}
 
@@ -93,12 +108,12 @@ def buscar_imagem_arasaac(palavra):
         if r.status_code == 200 and r.json():
             pid = r.json()[0]["_id"]
             img_url = f"https://api.arasaac.org/api/pictograms/{pid}"
-            img_path = f"{palavra}.png"
+            img_name = f"{palavra}_{uuid.uuid4().hex}.png"
 
-            with open(img_path, "wb") as f:
+            with open(img_name, "wb") as f:
                 f.write(requests.get(img_url).content)
 
-            return img_path
+            return img_name
 
     return None
 
@@ -119,11 +134,10 @@ def gerar_pdf(paciente, palavras):
     for palavra in palavras:
         img_path = buscar_imagem_arasaac(palavra)
         if img_path:
-            celula = [
+            linha.append([
                 Image(img_path, width=80, height=80),
                 Paragraph(f"<b>{palavra}</b>", styles["Normal"])
-            ]
-            linha.append(celula)
+            ])
 
         if len(linha) == 4:
             tabela.append(linha)
@@ -141,7 +155,6 @@ def gerar_pdf(paciente, palavras):
 
     elementos.append(table)
     elementos.append(Paragraph("<br/><br/>", styles["Normal"]))
-
     elementos.append(
         Paragraph(
             "<small>Pictogramas: ARASAAC – Licença CC BY-NC-SA 4.0</small>",
@@ -164,6 +177,8 @@ if gerar and texto and paciente:
             "paciente": paciente,
             "palavras": palavras
         }
+    else:
+        st.warning("⚠️ Não foi possível gerar pictogramas para esta frase.")
 
 # ===============================
 # VISUALIZAÇÃO + SALVAR
@@ -173,8 +188,8 @@ if st.session_state.prancha_atual:
     st.subheader("🧩 Prancha gerada (visualização)")
 
     palavras = st.session_state.prancha_atual["palavras"]
+    cols = safe_columns(palavras)
 
-    cols = st.columns(len(palavras))
     for col, palavra in zip(cols, palavras):
         with col:
             img = buscar_imagem_arasaac(palavra)
@@ -205,7 +220,7 @@ if st.session_state.pranchas:
     for i, p in enumerate(st.session_state.pranchas):
         st.markdown(f"### 👤 {p['paciente']}")
 
-        cols = st.columns(len(p["palavras"]))
+        cols = safe_columns(p["palavras"])
         for col, palavra in zip(cols, p["palavras"]):
             with col:
                 img = buscar_imagem_arasaac(palavra)
