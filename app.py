@@ -3,9 +3,9 @@ import urllib.parse
 
 st.set_page_config(page_title="NeuroCAA", layout="wide")
 
-# -------------------------------
+# ===============================
 # FUNÇÕES
-# -------------------------------
+# ===============================
 
 def gerar_placeholder(texto):
     texto = texto.strip() if texto else "CAA"
@@ -32,15 +32,21 @@ def gerar_pictogramas_mock(frase):
     return itens
 
 
-def fallback_columns(itens):
-    if not itens or len(itens) == 0:
-        return st.columns(1)
-    return st.columns(len(itens))
+def safe_columns(itens):
+    try:
+        qtd = len(itens)
+    except:
+        qtd = 1
+
+    if qtd < 1:
+        qtd = 1
+
+    return st.columns(qtd)
 
 
-# -------------------------------
+# ===============================
 # SESSION STATE
-# -------------------------------
+# ===============================
 
 if "prancha_ia" not in st.session_state:
     st.session_state.prancha_ia = []
@@ -49,9 +55,9 @@ if "prancha_manual" not in st.session_state:
     st.session_state.prancha_manual = []
 
 
-# -------------------------------
+# ===============================
 # INTERFACE
-# -------------------------------
+# ===============================
 
 st.title("🧠 NeuroCAA – Pranchas de Comunicação")
 
@@ -61,9 +67,9 @@ abas = st.tabs([
     "✋ Prancha Manual"
 ])
 
-# ==============================
+# ===============================
 # ABA 1 – GERAR
-# ==============================
+# ===============================
 with abas[0]:
     st.subheader("Criar nova prancha")
 
@@ -75,20 +81,21 @@ with abas[0]:
     if st.button("✨ Gerar Prancha"):
         if frase.strip():
             st.session_state.prancha_ia = gerar_pictogramas_mock(frase)
-            st.success("Prancha criada! Escolha a aba 👇")
+            st.success("Prancha criada! Vá para a aba 🤖 Prancha IA")
         else:
-            st.warning("Digite uma frase 😉")
+            st.warning("Digite uma frase.")
 
-# ==============================
+
+# ===============================
 # ABA 2 – PRANCHA IA
-# ==============================
+# ===============================
 with abas[1]:
     st.subheader("🤖 Prancha gerada pela IA")
 
     if not st.session_state.prancha_ia:
-        st.info("Nenhuma prancha gerada ainda.")
+        st.info("Nenhuma prancha gerada.")
     else:
-        cols = fallback_columns(st.session_state.prancha_ia)
+        cols = safe_columns(st.session_state.prancha_ia)
 
         for i, item in enumerate(st.session_state.prancha_ia):
             with cols[i]:
@@ -110,9 +117,10 @@ with abas[1]:
                 st.session_state.prancha_ia[i]["texto"] = novo_texto
                 st.session_state.prancha_ia[i]["imagem"] = nova_img
 
-# ==============================
+
+# ===============================
 # ABA 3 – PRANCHA MANUAL
-# ==============================
+# ===============================
 with abas[2]:
     st.subheader("✋ Criação manual")
 
@@ -130,7 +138,7 @@ with abas[2]:
     if not st.session_state.prancha_manual:
         st.info("Nenhum item adicionado.")
     else:
-        cols = fallback_columns(st.session_state.prancha_manual)
+        cols = safe_columns(st.session_state.prancha_manual)
 
         for i, item in enumerate(st.session_state.prancha_manual):
             with cols[i]:
