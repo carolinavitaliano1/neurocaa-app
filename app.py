@@ -1,210 +1,185 @@
 import streamlit as st
 import requests
-import os
 import json
-from openai import OpenAI
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib import colors
+import os
 
-# ===============================
-# CONFIGURAÇÕES
-# ===============================
-st.set_page_config(page_title="NeuroCAA", layout="wide")
+# =============================
+# CONFIGURAÇÃO INICIAL
+# =============================
+st.set_page_config(
+    page_title="NeuroCAA",
+    layout="wide"
+)
+
 st.title("🧠 NeuroCAA – Comunicação Alternativa")
-st.markdown("🖼️ Pictogramas: ARASAAC – Licença CC BY-NC-SA 4.0")
+st.caption("Pictogramas: ARASAAC – Licença CC BY-NC-SA 4.0")
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-DATA_PATH = "data"
-PACIENTES_FILE = f"{DATA_PATH}/pacientes.json"
-os.makedirs(DATA_PATH, exist_ok=True)
-
-# ===============================
+# =============================
 # DADOS
-# ===============================
-if not os.path.exists(PACIENTES_FILE):
-    with open(PACIENTES_FILE, "w") as f:
+# =============================
+DATA_PATH = "data/pacientes.json"
+os.makedirs("data", exist_ok=True)
+
+if not os.path.exists(DATA_PATH):
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
         json.dump({}, f)
 
-with open(PACIENTES_FILE, "r") as f:
+with open(DATA_PATH, "r", encoding="utf-8") as f:
     pacientes = json.load(f)
 
-# ===============================
+# =============================
+# FUNÇÕES
+# =============================
+
+MAPA_SEMANTICO = {
+    "fazer": ["fazer", "preparar", "cozinhar"],
+    "comer": ["comer", "alimentar"],
+    "beber": ["beber", "tomar"],
+    "chocolate": ["chocolate", "doce"],
+    "cozinha": ["cozinha", "cozinhar"],
+}
+
+def expandir_semantica(palavra):
+    palavra = palavra.lower()
+    for chave, relacionados in MAPA_SEMANTICO.items():
+        if palavra == chave or palavra in relacionados:
+            return list(set(relacionados + [chave]))
+    return [palavra]
+
+def buscar_arasaac_variacoes(palavra, limite=8):
+    termos = expandir_semantica(palavra)
+    imagens = []
+
+    for termo in termos:
+        url = f"https://api.arasaac.org/api/pictograms/pt/search/{termo}"
+        r = requests.get(url)
+        if r.status_code == 200:
+            for item in r.json():
+                img = f"https://api.arasaac.org/api/pictograms/{item['_id']}"
+                if img not in imagens:
+                    imagens.append(img)
+        if len(imagens) >= limite:
+            break
+
+    return imagens[:limite]
+
+def gerar_prancha_por_frase(frase):
+    palavras = frase.lower().split()
+    prancha = []
+
+    for palavra in palavras:
+        imgs = buscar_arasaac_variacoes(palavra, limite=1)
+        if imgs:
+            prancha.append({
+                "palavra": palavra,
+                "imagem": imgs[0]
+            })
+
+    return prancha
+
+def salvar_dados():
+    with open(DATA_PATH, "w", encoding="utf-8") as f:
+        json.dump(pacientes, f, ensure_ascii=False, indent=2)
+
+# =============================
 # SIDEBAR
-# ===============================
+# =============================
 st.sidebar.title("🧠 NeuroCAA")
 menu = st.sidebar.radio(
     "Navegação",
-    ["👤 Pacientes", "🧩 Criar Prancha", "📂 Histórico"]
+    ["Pacientes", "Criar Prancha", "Histórico"]
 )
 
-# ===============================
-# FUNÇÕES
-# ===============================
-def salvar_dados():
-    with open(PACIENTES_FILE, "w", encoding="utf-8") as f:
-        json.dump(pacientes, f, indent=2, ensure_ascii=False)
+# =============================
+# PACIENTES
+# =============================
+if menu == "Pacientes":
+    st.header("👤 Cadastro e Seleção de Pacientes")
 
-def gerar_palavras_caa(frase):
-    prompt = f"""
-    Transforme a frase abaixo em palavras para Comunicação Alternativa.
-    Mantenha artigos, preposições e verbos.
-    Retorne apenas palavras separadas por vírgula.
-
-    Frase: {frase}
-    """
-    r = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=80
-    )
-    return [p.strip().lower() for p in r.choices[0].message.content.split(",")]
-
-def buscar_opcoes_arasaac(palavra):
-    url = f"https://api.arasaac.org/api/pictograms/pt/search/{palavra}"
-    r = requests.get(url)
-    if r.status_code == 200:
-        return r.json()[:5]  # até 5 opções
-    return []
-
-def baixar_imagem(pid, palavra):
-    url = f"https://api.arasaac.org/api/pictograms/{pid}"
-    path = f"tmp_{palavra}_{pid}.png"
-    with open(path, "wb") as f:
-        f.write(requests.get(url).content)
-    return path
-
-def gerar_pdf(paciente, itens):
-    nome = f"prancha_{paciente.replace(' ', '_')}.pdf"
-    doc = SimpleDocTemplate(nome, pagesize=A4)
-    styles = getSampleStyleSheet()
-    elementos = []
-
-    elementos.append(Paragraph(f"<b>Paciente:</b> {paciente}", styles["Title"]))
-    elementos.append(Paragraph("<br/>", styles["Normal"]))
-
-    tabela = []
-    linha = []
-
-    for item in itens:
-        if item["img"]:
-            conteudo = [
-                Image(item["img"], 70, 70),
-                Paragraph(item["palavra"], styles["Normal"])
-            ]
-        else:
-            conteudo = Paragraph(item["palavra"], styles["Normal"])
-
-        linha.append(conteudo)
-
-        if len(linha) == 4:
-            tabela.append(linha)
-            linha = []
-
-    if linha:
-        tabela.append(linha)
-
-    if tabela:
-        table = Table(tabela)
-        table.setStyle(TableStyle([
-            ("GRID", (0,0), (-1,-1), 1, colors.black),
-            ("ALIGN", (0,0), (-1,-1), "CENTER"),
-        ]))
-        elementos.append(table)
-
-    elementos.append(Paragraph("<br/><br/>", styles["Normal"]))
-    elementos.append(Paragraph("Pictogramas: ARASAAC – Licença CC BY-NC-SA 4.0", styles["Normal"]))
-
-    doc.build(elementos)
-    return nome
-
-# ===============================
-# 👤 PACIENTES
-# ===============================
-if menu == "👤 Pacientes":
-    st.header("Cadastro e Seleção de Pacientes")
-
-    novo = st.text_input("Novo paciente")
-    if st.button("➕ Cadastrar"):
+    novo = st.text_input("Nome do novo paciente")
+    if st.button("Adicionar paciente"):
         if novo and novo not in pacientes:
-            pacientes[novo] = []
+            pacientes[novo] = {"historico": []}
             salvar_dados()
-            st.success("Paciente cadastrado!")
+            st.success("Paciente adicionado!")
 
     if pacientes:
-        st.session_state["paciente"] = st.selectbox("Paciente ativo", list(pacientes.keys()))
+        selecionado = st.selectbox(
+            "Paciente ativo",
+            list(pacientes.keys())
+        )
+        st.session_state["paciente"] = selecionado
+        st.info(f"Paciente ativo: {selecionado}")
 
-# ===============================
-# 🧩 CRIAR PRANCHA
-# ===============================
-if menu == "🧩 Criar Prancha":
+# =============================
+# CRIAR PRANCHA
+# =============================
+if menu == "Criar Prancha":
+    st.header("🧩 Criar Prancha")
+
     if "paciente" not in st.session_state:
         st.warning("Selecione um paciente primeiro.")
-    else:
-        frase = st.text_input("Digite uma frase")
+        st.stop()
 
-        if st.button("🤖 Gerar prancha com IA"):
-            palavras = gerar_palavras_caa(frase)
-            itens = []
+    frase = st.text_input("Digite uma frase")
 
-            for p in palavras:
-                opcoes = buscar_opcoes_arasaac(p)
-                img = baixar_imagem(opcoes[0]["_id"], p) if opcoes else None
-                itens.append({"palavra": p, "img": img, "opcoes": opcoes})
+    if st.button("🤖 Gerar com IA"):
+        prancha = gerar_prancha_por_frase(frase)
+        st.session_state["prancha"] = prancha
 
-            st.session_state["prancha"] = itens
+    prancha = st.session_state.get("prancha", [])
 
-        if "prancha" in st.session_state:
-            st.subheader("Prancha atual")
+    if prancha:
+        st.subheader("Prancha atual")
 
-            cols = st.columns(min(len(st.session_state["prancha"]), 6))
+        cols = st.columns(len(prancha))
 
-            for col, item in zip(cols, st.session_state["prancha"]):
-                with col:
-                    if item["img"]:
-                        st.image(item["img"], width=100)
-                    st.caption(item["palavra"])
+        for i, item in enumerate(prancha):
+            with cols[i]:
+                if st.button("🔄", key=f"editar_{i}", help="Trocar imagem"):
+                    st.session_state["editar_palavra"] = item["palavra"]
+                    st.session_state["editar_indice"] = i
 
-                    if item["opcoes"]:
-                        escolha = st.selectbox(
-                            "Trocar imagem",
-                            options=item["opcoes"],
-                            format_func=lambda x: x["keywords"][0]["keyword"],
-                            key=item["palavra"]
-                        )
-                        item["img"] = baixar_imagem(escolha["_id"], item["palavra"])
+                st.image(item["imagem"], width=120)
+                st.caption(item["palavra"])
 
-            if st.button("💾 Salvar prancha"):
-                pacientes[st.session_state["paciente"]].append(st.session_state["prancha"])
-                salvar_dados()
-                del st.session_state["prancha"]
-                st.success("Prancha salva!")
+    # =============================
+    # TROCA DE IMAGEM
+    # =============================
+    if "editar_palavra" in st.session_state:
+        palavra = st.session_state["editar_palavra"]
+        idx = st.session_state["editar_indice"]
 
-# ===============================
-# 📂 HISTÓRICO
-# ===============================
-if menu == "📂 Histórico":
+        st.markdown("---")
+        st.subheader(f"🔍 Escolha outra imagem para: **{palavra}**")
+
+        opcoes = buscar_arasaac_variacoes(palavra)
+
+        cols = st.columns(len(opcoes))
+        for i, img in enumerate(opcoes):
+            with cols[i]:
+                if st.button("Selecionar", key=f"sel_{i}"):
+                    st.session_state["prancha"][idx]["imagem"] = img
+                    del st.session_state["editar_palavra"]
+                    del st.session_state["editar_indice"]
+                    st.experimental_rerun()
+
+                st.image(img, width=100)
+
+# =============================
+# HISTÓRICO
+# =============================
+if menu == "Histórico":
+    st.header("📚 Histórico")
+
     if "paciente" not in st.session_state:
         st.warning("Selecione um paciente.")
+        st.stop()
+
+    historico = pacientes[st.session_state["paciente"]]["historico"]
+
+    if not historico:
+        st.info("Nenhuma prancha salva ainda.")
     else:
-        for i, prancha in enumerate(pacientes[st.session_state["paciente"]]):
-            st.markdown(f"### Prancha {i+1}")
-
-            cols = st.columns(min(len(prancha), 6))
-            for col, item in zip(cols, prancha):
-                with col:
-                    if item["img"]:
-                        st.image(item["img"], width=80)
-                    st.caption(item["palavra"])
-
-            if st.button(f"📄 Gerar PDF {i+1}", key=f"pdf_{i}"):
-                pdf = gerar_pdf(st.session_state["paciente"], prancha)
-                with open(pdf, "rb") as f:
-                    st.download_button(
-                        "⬇️ Baixar PDF",
-                        f,
-                        file_name=pdf,
-                        mime="application/pdf"
-                    )
+        for i, h in enumerate(historico):
+            st.markdown(f"**{i+1}.** {h}")
