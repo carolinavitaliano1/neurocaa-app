@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import os
 import time
+import unicodedata
 from openai import OpenAI, RateLimitError
 
 # ===============================
@@ -31,7 +32,7 @@ st.subheader("👤 Paciente")
 paciente = st.text_input("Nome do paciente")
 
 # ===============================
-# ENTRADA DE TEXTO
+# ENTRADA
 # ===============================
 
 st.subheader("💬 Comunicação")
@@ -45,24 +46,30 @@ gerar = st.button("🧩 Gerar prancha")
 def gerar_palavras_caa(texto):
     prompt = f"""
     Transforme a frase abaixo em palavras funcionais para Comunicação Alternativa.
-    Use palavras simples, concretas.
+    Use palavras simples e concretas.
+    NÃO use frases compostas.
     Retorne APENAS palavras separadas por vírgula.
 
     Frase: {texto}
     """
-
     try:
         r = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=60
+            max_tokens=80
         )
         return [p.strip().lower() for p in r.choices[0].message.content.split(",")]
-
     except RateLimitError:
         st.warning("⏳ Limite temporário da IA. Aguarde alguns segundos.")
         time.sleep(3)
         return []
+
+
+def normalizar(palavra):
+    palavra = palavra.lower()
+    palavra = unicodedata.normalize("NFD", palavra)
+    palavra = "".join(c for c in palavra if unicodedata.category(c) != "Mn")
+    return palavra
 
 
 def buscar_pictograma(palavra):
@@ -74,18 +81,29 @@ def buscar_pictograma(palavra):
 
 
 def buscar_com_fallback(palavra):
-    pid = buscar_pictograma(palavra)
-    if pid:
-        return pid
+    palavra = normalizar(palavra)
 
+    # quebra frases compostas
+    partes = palavra.split()
+
+    # tenta cada parte
+    for p in partes:
+        if p in ["da", "de", "do", "a", "o", "à"]:
+            continue
+        pid = buscar_pictograma(p)
+        if pid:
+            return pid
+
+    # fallback clínico
     fallback = {
-        "vovó": ["avó", "mulher", "pessoa"],
-        "vovô": ["avô", "homem", "pessoa"],
-        "casa da vovó": ["casa", "família"],
+        "vovo": ["avo", "mulher", "pessoa"],
+        "vovó": ["avo"],
+        "querer": ["querer", "pedir"],
         "ir": ["andar"],
-        "querer": ["pedir"],
-        "beber": ["água"],
+        "casa": ["casa"],
+        "banheiro": ["banheiro"],
         "comer": ["comida"],
+        "beber": ["agua"],
     }
 
     for alt in fallback.get(palavra, []):
@@ -93,6 +111,7 @@ def buscar_com_fallback(palavra):
         if pid:
             return pid
 
+    # fallback final universal
     return buscar_pictograma("pessoa")
 
 
@@ -101,7 +120,7 @@ def mostrar_prancha(itens, tamanho_img=100):
         st.warning("Nenhum item para exibir.")
         return
 
-    max_cols = 4  # seguro para Streamlit
+    max_cols = 4
 
     for i in range(0, len(itens), max_cols):
         linha = itens[i:i + max_cols]
@@ -135,7 +154,7 @@ if gerar and texto and paciente:
         st.warning("⚠️ Não foi possível gerar pictogramas para esta frase.")
 
 # ===============================
-# MOSTRAR PRANCHA (ABAS)
+# EXIBIÇÃO COM ABAS
 # ===============================
 
 if st.session_state.prancha_atual:
@@ -160,7 +179,7 @@ if st.session_state.prancha_atual:
             item["palavra"] = nova
 
             resultados = requests.get(
-                f"https://api.arasaac.org/api/pictograms/pt/{nova}"
+                f"https://api.arasaac.org/api/pictograms/pt/{normalizar(nova)}"
             ).json()[:6]
 
             if resultados:
