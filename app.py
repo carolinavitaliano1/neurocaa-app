@@ -87,7 +87,7 @@ def gerar_palavras_caa(texto):
 
 
 def limpar_palavras(palavras):
-    stopwords = ["quero", "eu", "de", "da", "do", "para", "com", "um", "uma"]
+    stopwords = [ "de", "da", "do", "com", "um", "uma"]
     palavras_limpas = []
 
     for p in palavras:
