@@ -124,14 +124,12 @@ if menu == "Criar Prancha":
     frase = st.text_input("Digite uma frase")
 
     if st.button("🤖 Gerar com IA"):
-        prancha = gerar_prancha_por_frase(frase)
-        st.session_state["prancha"] = prancha
+        st.session_state["prancha"] = gerar_prancha_por_frase(frase)
 
     prancha = st.session_state.get("prancha", [])
 
     if prancha:
         st.subheader("Prancha atual")
-
         cols = st.columns(len(prancha))
 
         for i, item in enumerate(prancha):
@@ -162,7 +160,7 @@ if menu == "Criar Prancha":
                     st.session_state["prancha"][idx]["imagem"] = img
                     del st.session_state["editar_palavra"]
                     del st.session_state["editar_indice"]
-                    st.experimental_rerun()
+                    st.rerun()
 
                 st.image(img, width=100)
 
