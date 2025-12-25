@@ -159,4 +159,3 @@ elif menu == "📚 Histórico":
             st.markdown(f"**Prancha {i}:**")
             st.write(prancha)
             st.markdown("---")
-
