@@ -65,8 +65,8 @@ gerar = st.button("🧩 Gerar prancha")
 def gerar_palavras_caa(texto):
     prompt = f"""
     Transforme a frase abaixo em palavras funcionais para Comunicação Alternativa.
-    Use apenas palavras simples, concretas e isoladas.
-    Não use frases.
+    Use palavras simples e isoladas.
+    Mantenha artigos e preposições se aparecerem.
     Retorne somente uma lista separada por vírgulas.
 
     Frase: {texto}
@@ -87,13 +87,10 @@ def gerar_palavras_caa(texto):
 
 
 def limpar_palavras(palavras):
-    stopwords = [ "de", "da", "do", "com", "um", "uma"]
     palavras_limpas = []
-
     for p in palavras:
-        if p and p not in stopwords and len(p) <= 15:
+        if p and len(p) <= 15:
             palavras_limpas.append(p)
-
     return list(dict.fromkeys(palavras_limpas))
 
 
@@ -133,10 +130,16 @@ def gerar_pdf(paciente, palavras):
 
     for palavra in palavras:
         img_path = buscar_imagem_arasaac(palavra)
+
         if img_path:
             linha.append([
                 Image(img_path, width=80, height=80),
                 Paragraph(f"<b>{palavra}</b>", styles["Normal"])
+            ])
+        else:
+            linha.append([
+                Paragraph(f"<b>{palavra}</b>", styles["Title"]),
+                Paragraph("", styles["Normal"])
             ])
 
         if len(linha) == 4:
@@ -166,7 +169,7 @@ def gerar_pdf(paciente, palavras):
     return nome_arquivo
 
 # ===============================
-# GERAR PRANCHA (NÃO SALVA AUTOMÁTICO)
+# GERAR PRANCHA
 # ===============================
 
 if gerar and texto and paciente:
@@ -193,8 +196,15 @@ if st.session_state.prancha_atual:
     for col, palavra in zip(cols, palavras):
         with col:
             img = buscar_imagem_arasaac(palavra)
+
             if img:
                 st.image(img, width=100)
+            else:
+                st.markdown(
+                    f"<div style='font-size:28px; font-weight:bold; text-align:center;'>{palavra}</div>",
+                    unsafe_allow_html=True
+                )
+
             st.caption(palavra)
 
     col1, col2 = st.columns(2)
@@ -224,8 +234,15 @@ if st.session_state.pranchas:
         for col, palavra in zip(cols, p["palavras"]):
             with col:
                 img = buscar_imagem_arasaac(palavra)
+
                 if img:
                     st.image(img, width=80)
+                else:
+                    st.markdown(
+                        f"<div style='font-size:22px; font-weight:bold; text-align:center;'>{palavra}</div>",
+                        unsafe_allow_html=True
+                    )
+
                 st.caption(palavra)
 
         if st.button(f"📄 Gerar PDF – {p['paciente']}", key=f"pdf_{i}"):
