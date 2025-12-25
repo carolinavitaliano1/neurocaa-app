@@ -9,7 +9,7 @@ import uuid
 def baixar_imagem(url):
     nome = f"temp_{uuid.uuid4().hex}.png"
     r = requests.get(url)
-    if r.status_code == 200:
+    if r.status_code == 200 and r.content:
         with open(nome, "wb") as f:
             f.write(r.content)
         return nome
@@ -34,11 +34,15 @@ def gerar_pdf(paciente, palavras):
 
         if img_path:
             arquivos_temp.append(img_path)
-            celula = [
+            conteudo = [
                 Image(img_path, width=70, height=70),
                 Paragraph(palavra, styles["Normal"])
             ]
-            linha.append(celula)
+        else:
+            # fallback seguro: palavra escrita
+            conteudo = Paragraph(palavra, styles["Normal"])
+
+        linha.append(conteudo)
 
         if len(linha) == 4:
             tabela.append(linha)
@@ -46,6 +50,10 @@ def gerar_pdf(paciente, palavras):
 
     if linha:
         tabela.append(linha)
+
+    # 🔐 PROTEÇÃO FINAL (NUNCA TABELA VAZIA)
+    if not tabela:
+        tabela = [[Paragraph("Nenhum pictograma disponível.", styles["Normal"])]]
 
     table = Table(tabela)
     table.setStyle(TableStyle([
