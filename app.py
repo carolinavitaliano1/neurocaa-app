@@ -1,220 +1,151 @@
 import streamlit as st
-import requests
-import os
-import time
-import unicodedata
-from openai import OpenAI, RateLimitError
-
-# ===============================
-# CONFIGURAÇÃO
-# ===============================
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 st.set_page_config(page_title="NeuroCAA", layout="wide")
-st.title("🧠 NeuroCAA – Pranchas de Comunicação Alternativa")
 
-# ===============================
-# SESSION STATE
-# ===============================
+# -------------------------------
+# FUNÇÕES AUXILIARES
+# -------------------------------
 
-if "prancha_atual" not in st.session_state:
-    st.session_state.prancha_atual = None
-
-if "pranchas_salvas" not in st.session_state:
-    st.session_state.pranchas_salvas = []
-
-# ===============================
-# PACIENTE
-# ===============================
-
-st.subheader("👤 Paciente")
-paciente = st.text_input("Nome do paciente")
-
-# ===============================
-# ENTRADA
-# ===============================
-
-st.subheader("💬 Comunicação")
-texto = st.text_input("Ex: quero ir à casa da vovó")
-gerar = st.button("🧩 Gerar prancha")
-
-# ===============================
-# FUNÇÕES
-# ===============================
-
-def gerar_palavras_caa(texto):
-    prompt = f"""
-    Transforme a frase abaixo em palavras funcionais para Comunicação Alternativa.
-    Use palavras simples e concretas.
-    NÃO use frases compostas.
-    Retorne APENAS palavras separadas por vírgula.
-
-    Frase: {texto}
+def gerar_pictogramas_mock(frase):
     """
-    try:
-        r = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=80
-        )
-        return [p.strip().lower() for p in r.choices[0].message.content.split(",")]
-    except RateLimitError:
-        st.warning("⏳ Limite temporário da IA. Aguarde alguns segundos.")
-        time.sleep(3)
-        return []
-
-
-def normalizar(palavra):
-    palavra = palavra.lower()
-    palavra = unicodedata.normalize("NFD", palavra)
-    palavra = "".join(c for c in palavra if unicodedata.category(c) != "Mn")
-    return palavra
-
-
-def buscar_pictograma(palavra):
-    url = f"https://api.arasaac.org/api/pictograms/pt/{palavra}"
-    r = requests.get(url)
-    if r.status_code == 200 and r.json():
-        return r.json()[0]["_id"]
-    return None
-
-
-def buscar_com_fallback(palavra):
-    palavra = normalizar(palavra)
-
-    # quebra frases compostas
-    partes = palavra.split()
-
-    # tenta cada parte
-    for p in partes:
-        if p in ["da", "de", "do", "a", "o", "à"]:
-            continue
-        pid = buscar_pictograma(p)
-        if pid:
-            return pid
-
-    # fallback clínico
-    fallback = {
-        "vovo": ["avo", "mulher", "pessoa"],
-        "vovó": ["avo"],
-        "querer": ["querer", "pedir"],
-        "ir": ["andar"],
-        "casa": ["casa"],
-        "banheiro": ["banheiro"],
-        "comer": ["comida"],
-        "beber": ["agua"],
-    }
-
-    for alt in fallback.get(palavra, []):
-        pid = buscar_pictograma(alt)
-        if pid:
-            return pid
-
-    # fallback final universal
-    return buscar_pictograma("pessoa")
-
-
-def mostrar_prancha(itens, tamanho_img=100):
-    if not itens:
-        st.warning("Nenhum item para exibir.")
-        return
-
-    max_cols = 4
-
-    for i in range(0, len(itens), max_cols):
-        linha = itens[i:i + max_cols]
-        cols = st.columns(len(linha))
-
-        for col, item in zip(cols, linha):
-            with col:
-                img = f"https://api.arasaac.org/api/pictograms/{item['pid']}"
-                st.image(img, width=tamanho_img)
-                st.markdown(f"**{item['palavra']}**")
-
-# ===============================
-# GERAR PRANCHA
-# ===============================
-
-if gerar and texto and paciente:
-    palavras = gerar_palavras_caa(texto)
-
+    Simulação de geração automática (IA).
+    Depois você liga na API real.
+    """
+    palavras = frase.lower().split()
     itens = []
+
     for p in palavras:
-        pid = buscar_com_fallback(p)
-        if pid:
-            itens.append({"palavra": p, "pid": pid})
+        itens.append({
+            "texto": p,
+            "imagem": "https://via.placeholder.com/150?text=" + p
+        })
 
-    if itens:
-        st.session_state.prancha_atual = {
-            "paciente": paciente,
-            "itens": itens
-        }
+    return itens
+
+
+def fallback_columns(itens):
+    """
+    Garante que o número de colunas nunca seja inválido
+    """
+    if not itens or len(itens) == 0:
+        return st.columns(1)
+    return st.columns(len(itens))
+
+
+# -------------------------------
+# SESSION STATE
+# -------------------------------
+
+if "prancha_ia" not in st.session_state:
+    st.session_state.prancha_ia = []
+
+if "prancha_manual" not in st.session_state:
+    st.session_state.prancha_manual = []
+
+
+# -------------------------------
+# INTERFACE
+# -------------------------------
+
+st.title("🧠 NeuroCAA – Pranchas de Comunicação")
+
+abas = st.tabs([
+    "➕ Gerar Prancha",
+    "🤖 Prancha IA",
+    "✋ Prancha Manual"
+])
+
+# ======================================================
+# ABA 1 – GERAR
+# ======================================================
+with abas[0]:
+    st.subheader("Criar nova prancha")
+
+    frase = st.text_input(
+        "Digite a frase",
+        placeholder="Ex: Eu quero ir à casa da vovó"
+    )
+
+    if st.button("✨ Gerar Prancha"):
+        if frase.strip() == "":
+            st.warning("Digite uma frase primeiro 😉")
+        else:
+            st.session_state.prancha_ia = gerar_pictogramas_mock(frase)
+            st.success("Prancha gerada! Agora escolha como deseja usar 👇")
+
+
+# ======================================================
+# ABA 2 – PRANCHA IA
+# ======================================================
+with abas[1]:
+    st.subheader("🤖 Prancha gerada automaticamente")
+
+    if not st.session_state.prancha_ia:
+        st.info("Nenhuma prancha gerada ainda.")
     else:
-        st.warning("⚠️ Não foi possível gerar pictogramas para esta frase.")
+        cols = fallback_columns(st.session_state.prancha_ia)
 
-# ===============================
-# EXIBIÇÃO COM ABAS
-# ===============================
+        for idx, item in enumerate(st.session_state.prancha_ia):
+            with cols[idx]:
+                st.image(item["imagem"], use_container_width=True)
 
-if st.session_state.prancha_atual:
-    aba_ia, aba_manual = st.tabs(["🤖 Sugestão da IA", "✏️ Ajustar manualmente"])
+                novo_texto = st.text_input(
+                    "Editar palavra",
+                    value=item["texto"],
+                    key=f"texto_ia_{idx}"
+                )
+                st.session_state.prancha_ia[idx]["texto"] = novo_texto
 
-    # ABA IA
-    with aba_ia:
-        st.subheader("🤖 Prancha sugerida pela IA")
-        mostrar_prancha(st.session_state.prancha_atual["itens"])
+                nova_imagem = st.text_input(
+                    "Trocar imagem (URL)",
+                    value=item["imagem"],
+                    key=f"img_ia_{idx}"
+                )
+                st.session_state.prancha_ia[idx]["imagem"] = nova_imagem
 
-    # ABA MANUAL
-    with aba_manual:
-        st.subheader("✏️ Ajustar palavras e imagens")
 
-        for i, item in enumerate(st.session_state.prancha_atual["itens"]):
-            st.markdown("---")
-            nova = st.text_input(
-                "Palavra",
-                value=item["palavra"],
-                key=f"pal_{i}"
-            )
-            item["palavra"] = nova
+# ======================================================
+# ABA 3 – PRANCHA MANUAL
+# ======================================================
+with abas[2]:
+    st.subheader("✋ Criar prancha manualmente")
 
-            resultados = requests.get(
-                f"https://api.arasaac.org/api/pictograms/pt/{normalizar(nova)}"
-            ).json()[:6]
+    with st.form("add_manual"):
+        texto = st.text_input("Palavra")
+        imagem = st.text_input(
+            "Imagem (URL)",
+            placeholder="https://..."
+        )
+        add = st.form_submit_button("Adicionar")
 
-            if resultados:
-                cols = st.columns(len(resultados))
-                for col, r in zip(cols, resultados):
-                    with col:
-                        img = f"https://api.arasaac.org/api/pictograms/{r['_id']}"
-                        if st.button("Usar", key=f"use_{i}_{r['_id']}"):
-                            item["pid"] = r["_id"]
-                        st.image(img, width=80)
+        if add:
+            if texto.strip() == "":
+                st.warning("A palavra não pode ficar vazia.")
             else:
-                st.info("Nenhuma imagem encontrada para esta palavra.")
+                st.session_state.prancha_manual.append({
+                    "texto": texto,
+                    "imagem": imagem if imagem else "https://via.placeholder.com/150?text=" + texto
+                })
 
-    # SALVAR
-    if st.button("💾 Salvar prancha"):
-        st.session_state.pranchas_salvas.append(st.session_state.prancha_atual)
-        st.success("Prancha salva com sucesso!")
+    if not st.session_state.prancha_manual:
+        st.info("Nenhum item adicionado ainda.")
+    else:
+        cols = fallback_columns(st.session_state.prancha_manual)
 
-# ===============================
-# PRANCHAS SALVAS
-# ===============================
+        for idx, item in enumerate(st.session_state.prancha_manual):
+            with cols[idx]:
+                st.image(item["imagem"], use_container_width=True)
 
-if st.session_state.pranchas_salvas:
-    st.subheader("📂 Pranchas salvas")
+                novo_texto = st.text_input(
+                    "Editar palavra",
+                    value=item["texto"],
+                    key=f"texto_manual_{idx}"
+                )
+                st.session_state.prancha_manual[idx]["texto"] = novo_texto
 
-    for p in st.session_state.pranchas_salvas:
-        st.markdown(f"**Paciente:** {p['paciente']}")
-        mostrar_prancha(p["itens"], tamanho_img=80)
-
-# ===============================
-# RODAPÉ LEGAL
-# ===============================
-
-st.markdown("---")
-st.caption(
-    "Pictogramas: ARASAAC (CC BY-NC-SA). "
-    "Ferramenta de apoio clínico e educacional."
-)
+                nova_img = st.text_input(
+                    "Trocar imagem (URL)",
+                    value=item["imagem"],
+                    key=f"img_manual_{idx}"
+                )
+                st.session_state.prancha_manual[idx]["imagem"] = nova_img
